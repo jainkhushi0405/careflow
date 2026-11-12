@@ -3,7 +3,6 @@
 
 import { useEffect, useState } from "react";
 
-
 type Role = "Admin" | "Doctor" | "Nurse";
 
 type Reading = {
@@ -37,12 +36,8 @@ type Discharge = {
 };
 
 const today = () => {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Kolkata",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
 const previousDate = (date: string, days: number) => {
@@ -77,18 +72,6 @@ const primaryButton = "bg-teal-600 hover:bg-teal-700 text-white rounded-lg px-4 
 const secondaryButton = "border border-slate-300 hover:bg-slate-50 rounded-lg px-4 py-3 text-sm font-semibold";
 
 export default function Home() {
-  const [todayDate, setTodayDate] = useState("");
-
-  useEffect(() => {
-    const d = new Date();
-    const formattedDate = [
-      d.getFullYear(),
-      String(d.getMonth() + 1).padStart(2, "0"),
-      String(d.getDate()).padStart(2, "0"),
-    ].join("-");
-
-    setTodayDate(formattedDate);
-  }, []);
   const [page, setPage] = useState("Dashboard");
   const [role, setRole] = useState<Role>("Admin");
   const [patients, setPatients] = useState<Patient[]>(initialPatients);
@@ -98,7 +81,7 @@ export default function Home() {
   const [room, setRoom] = useState("");
   const [selected, setSelected] = useState("CF-1001");
   const [temperature, setTemperature] = useState("");
-  const [readingDate, setReadingDate] = useState("");
+  const [readingDate, setReadingDate] = useState(today());
   const [consultPatient, setConsultPatient] = useState("CF-1001");
   const [consultNotes, setConsultNotes] = useState("");
   const [consultTreatment, setConsultTreatment] = useState("");
