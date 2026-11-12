@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useState } from "react";
@@ -35,22 +34,24 @@ type Discharge = {
   adminCompleted: boolean;
 };
 
-const today = () => {
+// This helper is called only inside useEffect, never while rendering.
+const getLocalDate = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
 const previousDate = (date: string, days: number) => {
-  const d = new Date(date + "T12:00:00");
+  if (!date) return "";
+  const d = new Date(`${date}T12:00:00`);
   d.setDate(d.getDate() - days);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
 const initialPatients: Patient[] = [
-  { id: "CF-1001", name: "Aarav Sharma", room: "R-01", nurse: "Priya", active: true, readings: [{ date: today(), value: 36.8, nurse: "Priya" }] },
-  { id: "CF-1002", name: "Meera Patel", room: "R-02", nurse: "Anjali", active: true, readings: [{ date: today(), value: 38.4, nurse: "Anjali" }] },
-  { id: "CF-1003", name: "Rohan Mehta", room: "R-03", nurse: "Priya", active: true, readings: [{ date: today(), value: 37.1, nurse: "Priya" }] },
-  { id: "CF-1004", name: "Ananya Shah", room: "R-04", nurse: "Neha", active: true, readings: [{ date: today(), value: 36.6, nurse: "Neha" }] },
+  { id: "CF-1001", name: "Aarav Sharma", room: "R-01", nurse: "Priya", active: true, readings: [{ date: "", value: 36.8, nurse: "Priya" }] },
+  { id: "CF-1002", name: "Meera Patel", room: "R-02", nurse: "Anjali", active: true, readings: [{ date: "", value: 38.4, nurse: "Anjali" }] },
+  { id: "CF-1003", name: "Rohan Mehta", room: "R-03", nurse: "Priya", active: true, readings: [{ date: "", value: 37.1, nurse: "Priya" }] },
+  { id: "CF-1004", name: "Ananya Shah", room: "R-04", nurse: "Neha", active: true, readings: [{ date: "", value: 36.6, nurse: "Neha" }] },
 ];
 
 const navItems = [
@@ -75,13 +76,14 @@ export default function Home() {
   const [page, setPage] = useState("Dashboard");
   const [role, setRole] = useState<Role>("Admin");
   const [patients, setPatients] = useState<Patient[]>(initialPatients);
+  const [todayDate, setTodayDate] = useState("");
   const [consultations, setConsultations] = useState<Consultation[]>([]);
   const [discharges, setDischarges] = useState<Discharge[]>([]);
   const [name, setName] = useState("");
   const [room, setRoom] = useState("");
   const [selected, setSelected] = useState("CF-1001");
   const [temperature, setTemperature] = useState("");
-  const [readingDate, setReadingDate] = useState(today());
+  const [readingDate, setReadingDate] = useState("");
   const [consultPatient, setConsultPatient] = useState("CF-1001");
   const [consultNotes, setConsultNotes] = useState("");
   const [consultTreatment, setConsultTreatment] = useState("");
@@ -89,36 +91,72 @@ export default function Home() {
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
+    // Read the current date only after the component has mounted in the browser.
+    const currentDate = getLocalDate();
+    setTodayDate(currentDate);
+    setReadingDate(currentDate);
+
+    let loadedSavedData = false;
+
     try {
-      const saved = localStorage.getItem("careflow-demo-v1");
+      const saved = window.localStorage.getItem("careflow-demo-v1");
       if (saved) {
-        const data = JSON.parse(saved);
-        if (Array.isArray(data.patients)) setPatients(data.patients);
-        if (Array.isArray(data.consultations)) setConsultations(data.consultations);
-        if (Array.isArray(data.discharges)) setDischarges(data.discharges);
+        const data: unknown = JSON.parse(saved);
+        if (data && typeof data === "object") {
+          const stored = data as {
+            patients?: unknown;
+            consultations?: unknown;
+            discharges?: unknown;
+          };
+          if (Array.isArray(stored.patients)) setPatients(stored.patients as Patient[]);
+          if (Array.isArray(stored.consultations)) setConsultations(stored.consultations as Consultation[]);
+          if (Array.isArray(stored.discharges)) setDischarges(stored.discharges as Discharge[]);
+          loadedSavedData = Array.isArray(stored.patients)
+            || Array.isArray(stored.consultations)
+            || Array.isArray(stored.discharges);
+        }
       }
-    } catch {
-      console.error("Could not load saved demo data.");
+    } catch (error) {
+      console.error("Could not load saved demo data.", error);
     }
+
+    // Seed demo records with today's date only on the client.
+    if (!loadedSavedData) {
+      setPatients(initialPatients.map(patient => ({
+        ...patient,
+        readings: patient.readings.map(reading => ({ ...reading, date: currentDate })),
+      })));
+    }
+
     setHydrated(true);
   }, []);
 
   useEffect(() => {
-    if (hydrated) {
-      localStorage.setItem("careflow-demo-v1", JSON.stringify({
+    if (!hydrated) return;
+
+    try {
+      window.localStorage.setItem("careflow-demo-v1", JSON.stringify({
         patients,
         consultations,
         discharges,
       }));
+    } catch (error) {
+      console.error("Could not save demo data in this browser.", error);
     }
   }, [patients, consultations, discharges, hydrated]);
 
   const activePatients = patients.filter(p => p.active);
-  const stable = activePatients.filter(p => latestReading(p)?.value < 38).length;
-  const fever = activePatients.filter(p => latestReading(p)?.value >= 38).length;
-  const pendingTemps = activePatients.filter(p => !p.readings.some(r => r.date === today())).length;
+  const stable = activePatients.filter(p => {
+    const value = latestReading(p)?.value;
+    return value !== undefined && value < 38;
+  }).length;
+  const fever = activePatients.filter(p => {
+    const value = latestReading(p)?.value;
+    return value !== undefined && value >= 38;
+  }).length;
+  const pendingTemps = activePatients.filter(p => !p.readings.some(r => r.date === todayDate)).length;
   const pendingConsultations = activePatients.filter(p =>
-    !consultations.some(c => c.patientId === p.id && c.date === today())
+    !consultations.some(c => c.patientId === p.id && c.date === todayDate)
   ).length;
 
   function latestReading(patient: Patient) {
@@ -127,11 +165,12 @@ export default function Home() {
 
   function feverFreeDays(patient: Patient) {
     let count = 0;
+    if (!todayDate) return count;
 
     // Three complete days before today must have readings,
     // and every reading on each day must be below 38°C.
     for (let i = 1; i <= 3; i++) {
-      const date = previousDate(today(), i);
+      const date = previousDate(todayDate, i);
       const daily = patient.readings.filter(r => r.date === date);
 
       if (daily.length === 0 || daily.some(r => r.value >= 38)) break;
@@ -201,7 +240,7 @@ export default function Home() {
       return;
     }
 
-    if (readingDate > today()) {
+    if (todayDate && readingDate > todayDate) {
       setMessage("Future temperature readings are not allowed.");
       return;
     }
@@ -218,7 +257,6 @@ export default function Home() {
     setTemperature("");
     setMessage("Temperature reading recorded successfully!");
   }
-
   function saveConsultation() {
     if (role !== "Doctor") {
       setMessage("Only a Doctor can save consultation records.");
@@ -243,7 +281,7 @@ export default function Home() {
       doctor: "Doctor",
       notes: consultNotes.trim(),
       treatment: consultTreatment.trim(),
-      date: today(),
+      date: todayDate,
     }]);
 
     setConsultNotes("");
@@ -467,7 +505,7 @@ export default function Home() {
               <label className="text-sm block mb-2">Temperature (°C)</label>
               <input type="number" step="0.1" placeholder="e.g. 37.2" value={temperature} onChange={e => setTemperature(e.target.value)} className={`${inputClass} mb-4`} />
               <label className="text-sm block mb-2">Reading date</label>
-              <input type="date" max={today()} value={readingDate} onChange={e => setReadingDate(e.target.value)} className={`${inputClass} mb-4`} />
+              <input type="date" max={todayDate} value={readingDate} onChange={e => setReadingDate(e.target.value)} className={`${inputClass} mb-4`} />
               <button onClick={recordTemperature} className={`${primaryButton} w-full`}>Save Temperature</button>
             </section> : <p className="bg-amber-50 text-amber-800 p-4 rounded-xl text-sm">Switch to Nurse role to record temperature readings.</p>}
 
